@@ -124,33 +124,36 @@ class VoiceClientApp:
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
 
-        def callback(recognizer, audio):
-            try:
-                transcript = recognizer.recognize_google(audio, language='id')
-                print("Recognized speech:", transcript)
+        # Start a thread to handle recording
+        self.recording_thread = Thread(target=self.record_audio)
+        self.recording_thread.start()
 
-                if self.websocket:
-                    asyncio.run_coroutine_threadsafe(self.websocket.send(json.dumps({
-                        'type': 'text',
-                        'room_id': self.room_id_entry.get(),
-                        'client_id': self.client_id_entry.get(),
-                        'text': transcript
-                    })), self.loop)
-            except sr.UnknownValueError:
-                print("Google Speech Recognition could not understand audio")
-            except sr.RequestError as e:
-                print(f"Could not request results from Google Speech Recognition service; {e}")
-
+    def record_audio(self):
         with self.microphone as source:
             self.recognizer.adjust_for_ambient_noise(source)
-            self.recognizer.listen(source, timeout=5, phrase_time_limit=5)
-            self.recognizer.listen(source, timeout=None, phrase_time_limit=None, callback=callback)
+
+            while self.is_recording:
+                try:
+                    audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=5)
+                    transcript = self.recognizer.recognize_google(audio, language='id')
+                    print("Recognized speech:", transcript)
+
+                    if self.websocket:
+                        asyncio.run_coroutine_threadsafe(self.websocket.send(json.dumps({
+                            'type': 'text',
+                            'room_id': self.room_id_entry.get(),
+                            'client_id': self.client_id_entry.get(),
+                            'text': transcript
+                        })), self.loop)
+                except sr.UnknownValueError:
+                    print("Google Speech Recognition could not understand audio")
+                except sr.RequestError as e:
+                    print(f"Could not request results from Google Speech Recognition service; {e}")
 
     def stop_recording(self):
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
         self.is_recording = False
-        # There is no direct way to stop the recognizer, it will stop listening after the phrase time limit
 
 if __name__ == "__main__":
     root = tk.Tk()
