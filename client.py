@@ -5,9 +5,9 @@ import websockets
 import json
 import speech_recognition as sr
 from gtts import gTTS
-import os
 import io
 from pygame import mixer
+from threading import Thread
 
 class VoiceClientApp:
     def __init__(self, root):
@@ -27,7 +27,7 @@ class VoiceClientApp:
         self.client_id_entry = tk.Entry(root)
         self.client_id_entry.pack()
 
-        self.connect_button = tk.Button(root, text="Connect", command=self.connect_websocket)
+        self.connect_button = tk.Button(root, text="Connect", command=self.start_connect)
         self.connect_button.pack()
 
         self.disconnect_button = tk.Button(root, text="Disconnect", state=tk.DISABLED, command=self.disconnect_websocket)
@@ -44,6 +44,19 @@ class VoiceClientApp:
 
         # Initialize pygame mixer for playing audio
         mixer.init()
+
+        # Create and run the asyncio event loop in a separate thread
+        self.loop = asyncio.new_event_loop()
+        self.loop_thread = Thread(target=self.run_event_loop, daemon=True)
+        self.loop_thread.start()
+
+    def run_event_loop(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
+    def start_connect(self):
+        # Schedule the coroutine to run in the asyncio event loop
+        asyncio.run_coroutine_threadsafe(self.connect_websocket(), self.loop)
 
     async def connect_websocket(self):
         room_id = self.room_id_entry.get()
@@ -117,12 +130,12 @@ class VoiceClientApp:
                 print("Recognized speech:", transcript)
 
                 if self.websocket:
-                    asyncio.create_task(self.websocket.send(json.dumps({
+                    asyncio.run_coroutine_threadsafe(self.websocket.send(json.dumps({
                         'type': 'text',
                         'room_id': self.room_id_entry.get(),
                         'client_id': self.client_id_entry.get(),
                         'text': transcript
-                    })))
+                    })), self.loop)
             except sr.UnknownValueError:
                 print("Google Speech Recognition could not understand audio")
             except sr.RequestError as e:

@@ -50,7 +50,7 @@ async def handle_client(websocket, path):
 
 async def main():
     print("Server started, waiting for connections...")
-    server = await websockets.serve(handle_client, "localhost", 8765)
+    server = await websockets.serve(handle_client, "0.0.0.0", 8765)
     await server.wait_closed()
 
 if __name__ == "__main__":
