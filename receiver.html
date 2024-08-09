@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Receiver</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        button {
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Voice Receiver</h1>
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+    <p id="status">Status: Disconnected</p>
+
+    <script>
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const statusElem = document.getElementById('status');
+
+        let websocket;
+        let audioContext;
+        let source;
+        const receiverId = "receiver_1"; // Unique ID for the receiver
+
+        // Function to connect to WebSocket
+        function connectWebSocket() {
+            websocket = new WebSocket('ws://localhost:8765');
+            websocket.binaryType = 'arraybuffer'; // Set binaryType to arraybuffer
+
+            websocket.onopen = () => {
+                console.log('WebSocket connected');
+                statusElem.textContent = 'Status: Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+
+                // Send receiver_id to server
+                sendReceiverId();
+            };
+
+            websocket.onclose = (event) => {
+                console.log('WebSocket closed', event);
+                statusElem.textContent = 'Status: Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            };
+
+            websocket.onerror = (error) => console.error('WebSocket error:', error);
+
+            websocket.onmessage = (event) => {
+                console.log('Received message', event.data);
+                
+                // Check if the message is audio data
+                if (event.data instanceof ArrayBuffer) {
+                    handleAudioData(new Uint8Array(event.data));
+                } else {
+                    console.log('Received non-audio message');
+                }
+            };
+        }
+
+        // Function to disconnect from WebSocket
+        function disconnectWebSocket() {
+            if (websocket) {
+                websocket.close();
+            }
+        }
+
+        // Function to send receiver_id to server
+        function sendReceiverId() {
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                const message = JSON.stringify({ receiver_id: receiverId });
+                websocket.send(message);
+                console.log(`Sent receiver_id: ${receiverId}`);
+            } else {
+                console.log('WebSocket is not open, readyState:', websocket.readyState);
+            }
+        }
+
+        // Function to handle and play audio data
+        function handleAudioData(audioData) {
+            if (!audioContext) {
+                audioContext = new AudioContext();
+            }
+
+            if (source) {
+                source.disconnect();
+            }
+
+            const buffer = audioContext.createBuffer(1, audioData.length, 44100);
+            buffer.copyToChannel(audioData, 0);
+
+            source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start(0);
+
+            console.log('Playing received audio data');
+        }
+
+        connectBtn.addEventListener('click', connectWebSocket);
+        disconnectBtn.addEventListener('click', disconnectWebSocket);
+    </script>
+</body>
+</html>

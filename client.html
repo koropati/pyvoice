@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        button {
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Voice Client</h1>
+    <input type="text" id="roomId" placeholder="Enter room ID">
+    <input type="text" id="clientId" placeholder="Enter client ID">
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+    <button id="startBtn" disabled>Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+    <p id="status">Status: Disconnected</p>
+
+    <script>
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusElem = document.getElementById('status');
+        const roomIdInput = document.getElementById('roomId');
+        const clientIdInput = document.getElementById('clientId');
+
+        let websocket;
+        let mediaRecorder;
+        let recognition;
+        let isRecording = false;
+
+        function connectWebSocket() {
+            const roomId = roomIdInput.value;
+            const clientId = clientIdInput.value;
+
+            if (!roomId || !clientId) {
+                alert('Please enter both room ID and client ID');
+                return;
+            }
+
+            websocket = new WebSocket('ws://localhost:8765');
+
+            websocket.onopen = () => {
+                console.log('WebSocket connected');
+                statusElem.textContent = 'Status: Connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                startBtn.disabled = false;
+
+                // Send room_id and client_id to server
+                const message = JSON.stringify({
+                    type: 'register',
+                    room_id: roomId,
+                    client_id: clientId
+                });
+                websocket.send(message);
+                console.log(`Sent room_id and client_id: ${roomId}, ${clientId}`);
+            };
+
+            websocket.onclose = (event) => {
+                console.log('WebSocket closed', event);
+                statusElem.textContent = 'Status: Disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+            };
+
+            websocket.onerror = (error) => console.error('WebSocket error:', error);
+
+            websocket.onmessage = (event) => {
+                console.log('Received message', event.data);
+
+                if (typeof event.data === 'string') {
+                    const data = JSON.parse(event.data);
+                    const text = data.text;
+
+                    if (text) {
+                        // Text-to-Speech
+                        const utterance = new SpeechSynthesisUtterance(text);
+                        window.speechSynthesis.speak(utterance);
+                        console.log('Playing received text:', text);
+                    } else {
+                        console.log('Received non-text message');
+                    }
+                } else {
+                    console.log('Received non-string message');
+                }
+            };
+        }
+
+        function disconnectWebSocket() {
+            if (websocket) {
+                websocket.close();
+            }
+        }
+
+        function startRecording() {
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            isRecording = true;
+
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                console.log('Recognized speech:', transcript);
+
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                    const message = JSON.stringify({
+                        type: 'text',
+                        room_id: roomIdInput.value,
+                        client_id: clientIdInput.value,
+                        text: transcript
+                    });
+                    websocket.send(message);
+                    console.log("Sent recognized text to server");
+                }
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    recognition.start();
+                }
+            };
+
+            recognition.start();
+        }
+
+        function stopRecording() {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            isRecording = false;
+
+            if (recognition) {
+                recognition.stop();
+                console.log("Recording stopped.");
+            }
+        }
+
+        connectBtn.addEventListener('click', connectWebSocket);
+        disconnectBtn.addEventListener('click', disconnectWebSocket);
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
+    </script>
+</body>
+</html>

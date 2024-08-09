@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Sender</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        button {
+            margin: 10px;
+        }
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <h1>Voice Sender</h1>
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+    <button id="startBtn" disabled>Start</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <canvas id="visualizer" width="600" height="200"></canvas>
+
+    <script>
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const visualizer = document.getElementById('visualizer');
+        const canvasCtx = visualizer.getContext('2d');
+
+        let websocket;
+        let mediaRecorder;
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let source;
+
+        // Function to connect to WebSocket
+        function connectWebSocket() {
+            websocket = new WebSocket('ws://localhost:8765');
+            websocket.onopen = () => {
+                console.log('WebSocket connected');
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                startBtn.disabled = false;
+            };
+            websocket.onclose = (event) => {
+                console.log('WebSocket closed', event);
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+            };
+            websocket.onerror = (error) => console.error('WebSocket error:', error);
+        }
+
+        // Function to disconnect from WebSocket
+        function disconnectWebSocket() {
+            if (websocket) {
+                websocket.close();
+            }
+        }
+
+        // Function to start recording
+        async function startRecording() {
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+
+            // Request access to the microphone
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                // Create MediaRecorder
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.start();
+
+                // Set up the audio context and analyser for visualization
+                audioContext = new AudioContext();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                // Visualize the audio data
+                visualize();
+
+                // Handle the audio data when available
+                mediaRecorder.ondataavailable = event => {
+                    console.log("Data available from MediaRecorder:", event.data.size, "bytes");
+
+                    const blob = new Blob([event.data], { type: 'audio/webm' });
+                    console.log("Blob created with size:", blob.size, "bytes");
+
+                    const reader = new FileReader();
+                    reader.onloadend = function() {
+                        const base64data = reader.result.split(',')[1]; // Get base64 part
+                        if (websocket && websocket.readyState === WebSocket.OPEN) {
+                            console.log("Sending data to server, base64 length:", base64data.length, "characters");
+                            websocket.send(JSON.stringify({
+                                sender_id: "sender_1",
+                                receiver_id: "receiver_1",
+                                audio_data: base64data
+                            }));
+                            console.log("Data sent to server");
+                        } else {
+                            console.log("WebSocket is not open, readyState:", websocket.readyState);
+                        }
+                    };
+                    reader.readAsDataURL(blob);
+                };
+            } catch (err) {
+                console.error("Error accessing microphone:", err);
+            }
+        }
+
+        // Function to stop recording
+        function stopRecording() {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+
+            // Stop recording
+            mediaRecorder.stop();
+            mediaRecorder.onstop = () => {
+                // Do not close WebSocket here
+                console.log("Recording stopped. WebSocket remains open.");
+            };
+        }
+
+        // Function to visualize audio data
+        function visualize() {
+            requestAnimationFrame(visualize);
+            analyser.getByteTimeDomainData(dataArray);
+
+            canvasCtx.fillStyle = 'rgb(200, 200, 200)';
+            canvasCtx.fillRect(0, 0, visualizer.width, visualizer.height);
+
+            canvasCtx.lineWidth = 2;
+            canvasCtx.strokeStyle = 'rgb(0, 0, 0)';
+
+            canvasCtx.beginPath();
+
+            const sliceWidth = visualizer.width * 1.0 / analyser.frequencyBinCount;
+            let x = 0;
+
+            for (let i = 0; i < analyser.frequencyBinCount; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = v * visualizer.height / 2;
+
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(visualizer.width, visualizer.height / 2);
+            canvasCtx.stroke();
+        }
+
+        connectBtn.addEventListener('click', connectWebSocket);
+        disconnectBtn.addEventListener('click', disconnectWebSocket);
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
+    </script>
+</body>
+</html>
