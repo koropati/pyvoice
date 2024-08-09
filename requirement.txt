@@ -1,5 +1,17 @@
+certifi==2024.7.4
 cffi==1.17.0
+charset-normalizer==3.3.2
+click==8.1.7
+colorama==0.4.6
+gTTS==2.5.2
+idna==3.7
 numpy==2.0.1
+PyAudio==0.2.14
 pycparser==2.22
+pygame==2.6.0
+requests==2.32.3
 sounddevice==0.4.7
+SpeechRecognition==3.10.4
+typing_extensions==4.12.2
+urllib3==2.2.2
 websockets==12.0
